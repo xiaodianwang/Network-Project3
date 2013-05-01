@@ -103,8 +103,8 @@ void uniform_delay(int b) {
     gettimeofday(&curr_time, NULL);
     srand(curr_time.tv_usec); //seed randnum generator w/ current time
     rand_num = rand()%(b+1);
-    delay_time = rand_num * 1000; //delay time in millisec
-    printf("%s in util.c: uniform delay time is %d ms\n", __func__, delay_time);
+    delay_time = rand_num * 1000; //get delay time in millisec
+    printf("%s in util.c: uniform delay time is %d ms\n", __func__, delay_time/1000);
     usleep((useconds_t) delay_time); 
 }
 
@@ -146,10 +146,10 @@ char *get_receiver_port(unsigned int receiver_id) {
     return port_str; 
 }
 
-//Function to obtain a running average, given a count of total elements and the
-//  cumulative sum of the elements themselves. Used by the router to obtain the
-//  average length of each queue. Also used by the receiver to obtain the  average
-//  packet delay from the sender to the receiver.
+/*Function to obtain a running average, given a count of total elements and
+ the cumulative sum of the elements themselves. Used by the router to 
+ obtain the average length of each queue. Also used by the receiver to 
+ obtain the  average packet delay from the sender to the receiver.*/
 unsigned int avg;
 unsigned int running_avg(unsigned int count, unsigned int cumulative) {
     avg = cumulative / count;

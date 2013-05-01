@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
     
     //Variables used in establishing socket and connection
     struct addrinfo hints, *dest_info, *sender_info;
-    int return_val, sender_return_val, sockfd, rx_sock;
+    int return_val, sender_return_val, sockfd, ack_sockfd;
     
     //Variables used for receiving incoming packets
     struct msg_payload *buff;
@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
     time_t duration = 0;
     
     //Parsing input argument
-    if (argc != 2) {
+    if (argc != 3) {
         perror("Receiver: incorrect number of input arguments\n");
         return 1;
     } else {
@@ -83,14 +83,14 @@ int main(int argc, char *argv[]) {
     }
     printf("Receiver %d: waiting to recvfrom...\n", receiver_id);
     
-    //Create datagram socket for sending pkts back to sender
+    //Create datagram socket for sending ACK pkts back to sender
     if((sender_return_val = getaddrinfo(sender_ip, SENDER_PORT, &hints, &sender_info)) != 0) {
         perror("Receiver: unable to get address info for Sender 2\n");
         return 5;
     }
     
-    if((rx_sock = socket(sender_info->ai_family, sender_info->ai_socktype, sender_info->ai_protocol)) == -1) {
-        close(rx_sock);
+    if((ack_sockfd = socket(sender_info->ai_family, sender_info->ai_socktype, sender_info->ai_protocol)) == -1) {
+        close(ack_sockfd);
         perror("Receiver: unable to create socket for Sender 2\n");
     }
     
@@ -111,10 +111,10 @@ int main(int argc, char *argv[]) {
         //additional delay
         duration = (curr_time.tv_sec - last_delay_time.tv_sec) + (curr_time.tv_usec - last_delay_time.tv_usec)/ONE_MILLION;
         
-        /*Variable packet delay alternates between b=5 and b=15, where
-         b is part of the uniform distribution [0,b] from which the 
-         delay is drawn*/
-        if (duration >= 5) {
+        /*Variable packet delay alternates between b=5 and b=15 every 
+         5 seconds, where b is part of the uniform distribution
+         [0,b] from which the delay is drawn*/
+        if (duration >= 5) {//If 5 seconds have passed
             if (b == 15) {
                 b = 5;
             }
@@ -145,6 +145,6 @@ int main(int argc, char *argv[]) {
         }
     }
     close(sockfd);
-    close(rx_sock);
+    close(ack_sockfd);
     return 0;
 }

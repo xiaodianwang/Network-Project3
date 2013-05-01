@@ -29,6 +29,8 @@
 //argv[6] is the initial timeout time (in milliseconds) for Go-Back-N
  // ARQ (it is only used once, after the first packet is received, the
  // timeout time is estimated using adaptive exponential averaging)
+//argv[7] is the option for AIMD (additive increase, multiplicative decrease)
+ //if Sender is using AIMD - argv[7] is 1. If not, argv[7] is 0.
 
 int main(int argc, char *argv[]) {
     //Variables used for input arguments
@@ -38,6 +40,7 @@ int main(int argc, char *argv[]) {
     char *dest_ip; //destination/router IP
     unsigned int slide_window_size;
     unsigned int timeout_time;
+    unsigned int aimd_option;
     
     //Variables used for establishing the connection
     int sockfd, listen_sockfd;
@@ -62,10 +65,10 @@ int main(int argc, char *argv[]) {
     
     //Variables used for estimation of packet timeout value
     unsigned int ack_pkt_cnt = 0;
-    float avg_rtt = 0, current_rtt = 0, avg_dev = 0; //units are in milliseconds
+    float avg_rtt = 0, current_rtt = 0, avg_dev = 0; //units are in ms
     
     //Parsing input arguments
-    if (argc != 7) {
+    if (argc != 8) {
         perror("Sender 2: incorrect number of command-line arguments\n");
         return 1; 
     } else {
@@ -75,7 +78,8 @@ int main(int argc, char *argv[]) {
         dest_ip = argv[4];
         slide_window_size = atoi(argv[5]);
         timeout_time = atoi(argv[6]);
-        printf("Sender id %d, r value %d, receiver id %d, router IP address %s, port number %s, sliding window size is %d, the timeout time is %d\n", sender_id, r, receiver_id, dest_ip, ROUTER_PORT, slide_window_size, timeout_time);
+        aimd_option = atoi(argv[7]);
+        printf("Sender id %d, r value %d, receiver id %d, router IP address %s, port number %s, sliding window size is %d, the timeout time is %d, AIMD option is %d\n", sender_id, r, receiver_id, dest_ip, ROUTER_PORT, slide_window_size, timeout_time, aimd_option);
     }
     
     //load struct addrinfo with host information
@@ -137,7 +141,7 @@ int main(int argc, char *argv[]) {
     while (1) {
         //delta_time is elapsed time in milliseconds
         delta_time = ((curr_time.tv_sec * ONE_MILLION + curr_time.tv_usec) - (start_time.tv_sec * ONE_MILLION+ start_time.tv_usec))/1000;
-        printf("Delta time for Sender 2: %f ms\n", (float)delta_time);
+        //printf("Elapsed (Delta) time for Sender 2: %f ms\n", (float)delta_time);
         
         if (next_seq_no < (beg_seq_no + slide_window_size)) {
             buffer->seq = htonl(next_seq_no); //pkt sequence ID, initialized at 0
@@ -148,6 +152,7 @@ int main(int argc, char *argv[]) {
             buffer->timestamp_sec = htonl(curr_timestamp_sec); //Pkt timestamp_sec
             buffer->timestamp_usec = htonl(curr_timestamp_usec); //Pkt timestamp_usec
             printf("Pkt data: seq#-%d, senderID-%d, receiverID-%d, timestamp_sec-%d, timestamp_usec %d\n", ntohl(buffer->seq), ntohl(buffer->sender_id), ntohl(buffer->receiver_id), ntohl(buffer->timestamp_sec), ntohl(buffer->timestamp_usec));
+            printf("Sender 2 current window size: %d\n", slide_window_size);
             //Send packet
             packet_success = sendto(sockfd, buffer, sizeof(struct msg_payload), 0, receiver_info->ai_addr, receiver_info->ai_addrlen);
             printf("Sender 2: Total packets sent so far: %d\n",next_seq_no);
@@ -155,11 +160,14 @@ int main(int argc, char *argv[]) {
             //Update the packet sequence ID
             next_seq_no++;
         }
-        
+        //Receive ACK packets from listening socket
         recv_success = recvfrom(listen_sockfd, buff, sizeof (struct msg_payload), 0, (struct sockaddr *)&their_addr, &addr_len);
         if (recv_success > 0) {//received ACK packet
             ack_pkt_cnt++;
-            
+            //Additively increase sliding window size of Sender
+            if (aimd_option == 1) {
+                slide_window_size++;
+            }
             //Estimate new timeout time using exponential averaging
             gettimeofday(&curr_time, NULL);
             current_rtt = ((ONE_MILLION*curr_time.tv_sec + curr_time.tv_usec)-(ONE_MILLION*buff->timestamp_sec + buff->timestamp_usec))/1000;
@@ -168,7 +176,7 @@ int main(int argc, char *argv[]) {
                 avg_dev = current_rtt;
                 printf("RTT for 1st received ACK pkt: %f ms\n", avg_rtt);
             }
-            if (ack_pkt_cnt > 1) {
+            if (ack_pkt_cnt > 1) {//All subsequent ACKs received
                 gettimeofday(&curr_time, NULL);
                 avg_rtt = avg_round_trip_time(avg_rtt, current_rtt, 0.875);
                 avg_dev = avg_deviation(avg_dev, current_rtt, 0.75);
@@ -187,6 +195,11 @@ int main(int argc, char *argv[]) {
                 //reset the timer
                 gettimeofday(&curr_time, NULL);
                 gettimeofday(&start_time, NULL);
+            }
+        } else {
+            if (aimd_option == 1) {
+                //ACKs are missing, divide sliding window size by 2
+                slide_window_size = slide_window_size/2;
             }
         }
     }
