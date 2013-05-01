@@ -28,7 +28,7 @@
 //argv[5] is the size of the sliding window for Go-Back-N ARQ (default should be 32 packets)
 //argv[6] is the initial timeout time (in milliseconds) for Go-Back-N
  // ARQ (it is only used once, after the first packet is received, the
- // timeout time is estimated using adaptive exponential averaging
+ // timeout time is estimated using adaptive exponential averaging)
 
 int main(int argc, char *argv[]) {
     //Variables used for input arguments
@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
     
     //Variables used for estimation of packet timeout value
     unsigned int ack_pkt_cnt = 0;
-    unsigned float avg_RTT = 0, deviation = 0;
+    float avg_rtt = 0, current_rtt = 0, avg_dev = 0; //units are in milliseconds
     
     //Parsing input arguments
     if (argc != 7) {
@@ -136,7 +136,8 @@ int main(int argc, char *argv[]) {
     
     while (1) {
         //delta_time is elapsed time in milliseconds
-        delta_time = (curr_time.tv_sec * 1000 + curr_time.tv_usec) - (start_time.tv_sec * 1000 + start_time.tv_usec);
+        delta_time = ((curr_time.tv_sec * ONE_MILLION + curr_time.tv_usec) - (start_time.tv_sec * ONE_MILLION+ start_time.tv_usec))/1000;
+        printf("Delta time for Sender 2: %f ms\n", (float)delta_time);
         
         if (next_seq_no < (beg_seq_no + slide_window_size)) {
             buffer->seq = htonl(next_seq_no); //pkt sequence ID, initialized at 0
@@ -157,11 +158,29 @@ int main(int argc, char *argv[]) {
         
         recv_success = recvfrom(listen_sockfd, buff, sizeof (struct msg_payload), 0, (struct sockaddr *)&their_addr, &addr_len);
         if (recv_success > 0) {//received ACK packet
-            buff->seq = ntohl(buff->seq);
-            /*Shift the window if Sender 2 receives an ACK for a 
-             packet sequence ID outside of the current window, or if 
-             the packet sequence ID is smaller than the current 
+            ack_pkt_cnt++;
+            
+            //Estimate new timeout time using exponential averaging
+            gettimeofday(&curr_time, NULL);
+            current_rtt = ((ONE_MILLION*curr_time.tv_sec + curr_time.tv_usec)-(ONE_MILLION*buff->timestamp_sec + buff->timestamp_usec))/1000;
+            if (ack_pkt_cnt == 1) {//1st ACK packet received
+                avg_rtt = current_rtt;
+                avg_dev = current_rtt;
+                printf("RTT for 1st received ACK pkt: %f ms\n", avg_rtt);
+            }
+            if (ack_pkt_cnt > 1) {
+                gettimeofday(&curr_time, NULL);
+                avg_rtt = avg_round_trip_time(avg_rtt, current_rtt, 0.875);
+                avg_dev = avg_deviation(avg_dev, current_rtt, 0.75);
+            }
+            //New timeout_time
+            timeout_time = timeout(avg_rtt, avg_dev);
+            
+            /*Shift the window if Sender 2 receives an ACK for a
+             packet sequence ID outside of the current window, or if
+             the packet sequence ID is smaller than the current
              sequence number (next_seq_no) and S2 has timed out*/
+            buff->seq = ntohl(buff->seq);
             if ((buff->seq < next_seq_no && delta_time >= timeout_time)|| (buff->seq > (beg_seq_no + slide_window_size))) {
                 beg_seq_no = buff->seq;
                 next_seq_no = buff->seq;
