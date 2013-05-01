@@ -7,6 +7,7 @@
 #ifndef _common_h
 #define _common_h
 #define ROUTER_PORT "6000"
+#define SENDER_PORT "7000"
 #define ONE_MILLION 1000000
 #define RECEIVER_PORT_BASE 5000
 

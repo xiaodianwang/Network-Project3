@@ -90,7 +90,22 @@ void poisson_delay(double mean) {
     
     delay_time = -log(1.0 - rand_num)*mean;
     //printf("*****%s delay is: %f milliseconds\n",__func__, delay_time);
-    usleep((useconds_t) (delay_time * 1000)); //usleep is in usec, want microsec
+    usleep((useconds_t) (delay_time * 1000)); //usleep is in usec, want millisec
+}
+
+//Generates a time delay according to a uniform distribution.
+//Given an input b, will delay a random time within the uniform
+//distribution of [0, b].
+void uniform_delay(int b) {
+    int delay_time = 0, rand_num = 0;
+    struct timeval curr_time;
+    
+    gettimeofday(&curr_time, NULL);
+    srand(curr_time.tv_usec); //seed randnum generator w/ current time
+    rand_num = rand()%(b+1);
+    delay_time = rand_num * 1000; //delay time in millisec
+    printf("%s: delay time is %d ms\n", __func__, delay_time);
+    usleep((useconds_t) delay_time); 
 }
 
 //Function to retreive the port for a given receiver ID
