@@ -104,7 +104,7 @@ void uniform_delay(int b) {
     srand(curr_time.tv_usec); //seed randnum generator w/ current time
     rand_num = rand()%(b+1);
     delay_time = rand_num * 1000; //get delay time in millisec
-    printf("%s in util.c: uniform delay time is %d ms\n", __func__, delay_time/1000);
+    //printf("%s in util.c: uniform delay time is %d ms\n", __func__, delay_time/1000);
     usleep((useconds_t) delay_time); 
 }
 
@@ -131,7 +131,7 @@ float avg_deviation(float dev_so_far, float curr_rtt, float b) {
 }
 
 //Function to obtain the timeout time for the Sender's sliding window (in ms)
-float timeout_t =0;
+float timeout_t = 0;
 float timeout(float exp_avg_rtt, float deviation) {
     timeout_t = exp_avg_rtt + (4 * deviation);
     printf("%s in util.c: timeout time is %f ms\n", __func__, timeout_t);
@@ -153,6 +153,6 @@ char *get_receiver_port(unsigned int receiver_id) {
 unsigned int avg;
 unsigned int running_avg(unsigned int count, unsigned int cumulative) {
     avg = cumulative / count;
-    printf("%s in util.c: is currently %d\n",__func__, avg);
+    //printf("%s in util.c: is currently %d\n",__func__, avg);
     return avg; 
 }

@@ -30,7 +30,7 @@
  // ARQ (it is only used once, after the first packet is received, the
  // timeout time is estimated using adaptive exponential averaging)
 //argv[7] is the option for AIMD (additive increase, multiplicative decrease)
- //if Sender is using AIMD - argv[7] is 1. If not, argv[7] is 0.
+ //If Sender is using AIMD, argv[7] is 1. If not, argv[7] is 0.
 
 int main(int argc, char *argv[]) {
     //Variables used for input arguments
@@ -151,11 +151,11 @@ int main(int argc, char *argv[]) {
             curr_timestamp_usec = curr_time.tv_usec;
             buffer->timestamp_sec = htonl(curr_timestamp_sec); //Pkt timestamp_sec
             buffer->timestamp_usec = htonl(curr_timestamp_usec); //Pkt timestamp_usec
-            printf("Pkt data: seq#-%d, senderID-%d, receiverID-%d, timestamp_sec-%d, timestamp_usec %d\n", ntohl(buffer->seq), ntohl(buffer->sender_id), ntohl(buffer->receiver_id), ntohl(buffer->timestamp_sec), ntohl(buffer->timestamp_usec));
+            printf("SENT Pkt data: seq#-%d, senderID-%d, receiverID-%d, timestamp_sec-%d, timestamp_usec %d\n", ntohl(buffer->seq), ntohl(buffer->sender_id), ntohl(buffer->receiver_id), ntohl(buffer->timestamp_sec), ntohl(buffer->timestamp_usec));
             printf("Sender 2 current window size: %d\n", slide_window_size);
             //Send packet
             packet_success = sendto(sockfd, buffer, sizeof(struct msg_payload), 0, receiver_info->ai_addr, receiver_info->ai_addrlen);
-            printf("Sender 2: Total packets sent so far: %d\n",next_seq_no);
+            printf("Sender 2: Total packets sent so far: %d\n",next_seq_no+1);
             poisson_delay((double)r);
             //Update the packet sequence ID
             next_seq_no++;
@@ -163,18 +163,28 @@ int main(int argc, char *argv[]) {
         //Receive ACK packets from listening socket
         recv_success = recvfrom(listen_sockfd, buff, sizeof (struct msg_payload), 0, (struct sockaddr *)&their_addr, &addr_len);
         if (recv_success > 0) {//received ACK packet
-            ack_pkt_cnt++;
+            ack_pkt_cnt++; //increment ACK packet counter
+            buff->seq = ntohl(buff->seq);
+            buff->sender_id = ntohl(buff->sender_id);
+            buff->receiver_id = ntohl(buff->receiver_id);
+            buff->timestamp_sec = ntohl(buff->timestamp_sec);
+            buff->timestamp_usec = ntohl(buff->timestamp_usec);
+            printf("RECEIVED Pkt data: seq#-%d, senderID-%d, receiverID-%d, timestamp_sec-%d, timestamp_usec:%d\n", buff->seq, buff->sender_id, buff->receiver_id, (int)buff->timestamp_sec, (int)buff->timestamp_usec);
+            
             //Additively increase sliding window size of Sender
             if (aimd_option == 1) {
                 slide_window_size++;
+                printf("Window size updated to %d\n", slide_window_size);
             }
             //Estimate new timeout time using exponential averaging
             gettimeofday(&curr_time, NULL);
-            current_rtt = ((ONE_MILLION*curr_time.tv_sec + curr_time.tv_usec)-(ONE_MILLION*buff->timestamp_sec + buff->timestamp_usec))/1000;
+            current_rtt = ONE_MILLION * (curr_time.tv_sec - buff->timestamp_sec) + (curr_time.tv_usec - buff->timestamp_usec);
+            
+            printf("Current time: %d sec %d usec, timestamp: %d sec %d usec\n", (int)curr_time.tv_sec, (int)curr_time.tv_usec, buff->timestamp_sec, buff->timestamp_usec);
             if (ack_pkt_cnt == 1) {//1st ACK packet received
                 avg_rtt = current_rtt;
                 avg_dev = current_rtt;
-                printf("RTT for 1st received ACK pkt: %f ms\n", avg_rtt);
+                printf("RTT for 1st received ACK pkt: %f usec\n", avg_rtt);
             }
             if (ack_pkt_cnt > 1) {//All subsequent ACKs received
                 gettimeofday(&curr_time, NULL);
@@ -183,7 +193,7 @@ int main(int argc, char *argv[]) {
             }
             //New timeout_time
             timeout_time = timeout(avg_rtt, avg_dev);
-            
+            printf("The time out time is %d\n", timeout_time);
             /*Shift the window if Sender 2 receives an ACK for a
              packet sequence ID outside of the current window, or if
              the packet sequence ID is smaller than the current
