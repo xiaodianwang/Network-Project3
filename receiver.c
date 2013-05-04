@@ -156,14 +156,15 @@ int main(int argc, char *argv[]) {
             if (buff->seq < (next_seq_no + slide_window_size)) {
                 //update the bit_map
                 bit_map |= (1 << (buff->seq % slide_window_size));
-             //search through the bit_map to find the next expected packet sequence number
-                while (bit_map & (1 << (next_seq_no % slide_window_size))) {
-                    //packet is received, so clear its bit
-                    bit_map &= ~(1 <<(next_seq_no % slide_window_size));
-                    //Increment the next_seq_no to see if packet has already been received
-                    next_seq_no++;
-                }
             }
+            //search through the bit_map to find the next expected packet sequence number
+            while (bit_map & (1 << (next_seq_no % slide_window_size))) {
+                //packet is received, so clear its bit
+                bit_map &= ~(1 <<(next_seq_no % slide_window_size));
+                //Increment the next_seq_no to see if packet has already been received
+                next_seq_no++;
+            }
+
             //Send ACK back to sender with the seq# we expect to receive
             //Timestamp w/ same timestamp as the original incoming pkt
             buff->seq = htonl(next_seq_no);

@@ -108,35 +108,6 @@ void uniform_delay(int b) {
     usleep((useconds_t) delay_time); 
 }
 
-//Function to obtain the exponential avg of packet round-trip-times (in ms)
-//Used in estimating the sender window timeout time
-//Based on the equation A(n+1) = (1-b)*A(n) + b*T(n+1), where:
-//A(n) is the exponential average RTT, b is a pre-chosen parameter value (typically 0.875), T(n) is the RTT of the current packet
-float exp_avg = 0;
-float avg_round_trip_time(float avg_so_far, float curr_rtt, float b) {
-    exp_avg = (1-b)*avg_so_far + b*curr_rtt;
-    printf("%s in util.c: exponential average RTT is %f ms\n", __func__, exp_avg);
-    return exp_avg;
-}
-
-//Function to obtain the exponential avg of round-trip-time deviation (in ms)
-//Used in estimating the sender window timeout time
-//Based on the equation D(n+1) = (1-b)*D(n) + b*|T(n+1) - A(n+1)|, where:
-//D(n) is the exponential average deviation, b is a pre-chosen parameter value (typically 0.75), T(n) is the RTT of the current packet
-float exp_dev = 0;
-float avg_deviation(float dev_so_far, float curr_rtt, float b) {
-    exp_dev = (1-b)*dev_so_far + b*abs(curr_rtt - exp_avg);
-    return exp_dev;
-    printf("%s in util.c: exponential deviation is %f ms\n", __func__, exp_dev);
-}
-
-//Function to obtain the timeout time for the Sender's sliding window (in ms)
-float timeout_t = 0;
-float timeout(float exp_avg_rtt, float deviation) {
-    timeout_t = exp_avg_rtt + (4 * deviation);
-    printf("%s in util.c: timeout time is %f ms\n", __func__, timeout_t);
-    return timeout_t;
-}
 //Function to retreive the port for a given receiver ID
 char port_str[32];
 char *get_receiver_port(unsigned int receiver_id) {

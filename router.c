@@ -186,7 +186,7 @@ int main(int argc, char *argv[]) {
                 if (q1->q_size != 0) {
                     q_dq_cnt++;
                     cum_q_size += q1->q_size;
-                    avg_q_size = running_avg(q1_dq_cnt, cum_q_size);
+                    avg_q_size = running_avg(q_dq_cnt, cum_q_size);
                     printf("SINGLE QUEUE - Cumulative sum of queue lengths: %d | # of dequeue operations: %d | Average router queue size: %d\n", cum_q_size, q_dq_cnt, avg_q_size);
                 }
             }
