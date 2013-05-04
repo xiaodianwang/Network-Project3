@@ -19,6 +19,9 @@
 #include <math.h>
 #include "common.h"
 
+#define FLAG_ON 1
+#define FLAG_OFF 0
+
 //Input Arguments to sender.c:
 //argv[1] is Sender ID, which is either 1 (for Sender1) or 2 (for Sender2)
 //argv[2] is the mean value inter-packet time R in millisec (based on Poisson distr). 
@@ -47,7 +50,8 @@ int main(int argc, char *argv[]) {
     struct timeval start_time;
     struct timeval curr_time;
     time_t delta_time = 0, curr_timestamp_sec = 0, curr_timestamp_usec = 0;
-    
+    //Variable used for alternating between sending and not sending
+    unsigned int counter = 0;
     //Parsing input arguments
     if (argc != 6) {
         perror("Sender: incorrect number of command-line arguments\n");
@@ -100,25 +104,34 @@ int main(int argc, char *argv[]) {
     buffer->timestamp_sec = htonl(curr_timestamp_sec); //Pkt timestamp_sec
     buffer->timestamp_usec = htonl(curr_timestamp_usec); //Pkt timestamp_usec
     
-    
-    while ((delta_time / ONE_MILLION) < duration) {
-        //printf("%s: payload size is %f Bytes\n", __func__, (double)sizeof(payload));
-        printf("Pkt data: seq#-%d, senderID-%d, receiverID-%d, timestamp_sec-%d, timestamp_usec %d\n", ntohl(buffer->seq), ntohl(buffer->sender_id), ntohl(buffer->receiver_id), ntohl(buffer->timestamp_sec), ntohl(buffer->timestamp_usec));
-        packet_success = sendto(sockfd, buffer, sizeof(struct msg_payload), 0, receiver_info->ai_addr, receiver_info->ai_addrlen);
-        printf("Sender: Total packets sent so far: %d\n", seq);
-        poisson_delay((double)r);
-        gettimeofday(&curr_time, NULL);
-        //delta_time is elapsed time in microseconds
-        //   (divide by ONE_MILLION to get seconds)
-        delta_time = (curr_time.tv_sec * ONE_MILLION + curr_time.tv_usec) - (start_time.tv_sec * ONE_MILLION + start_time.tv_usec);
-        
-        //Get the timestamp for the next packet
-        curr_timestamp_sec = curr_time.tv_sec;
-        curr_timestamp_usec = curr_time.tv_usec;
-        buffer->timestamp_sec = htonl((long)curr_timestamp_sec);
-        buffer->timestamp_usec = htonl((long)curr_timestamp_usec);
-        buffer->seq = htonl(seq++);
-        //printf("Sender: Delta time: %d usec, current time of seconds: %d sec, current time of microsec: %d microsec\n", (int)delta_time, (int)curr_timestamp_sec, (int)curr_timestamp_usec);
+    while (1) {
+        while (counter < 5) {
+            counter++;
+            usleep(1000000); //system sleep for one second
+            gettimeofday(&start_time, NULL);
+            gettimeofday(&curr_time, NULL);
+            delta_time = (curr_time.tv_sec * ONE_MILLION + curr_time.tv_usec) - (start_time.tv_sec * ONE_MILLION + start_time.tv_usec);
+        }
+        while ((delta_time / ONE_MILLION) < duration) {
+            //printf("%s: payload size is %f Bytes\n", __func__, (double)sizeof(payload));
+            printf("Pkt data: seq#-%d, senderID-%d, receiverID-%d, timestamp_sec-%d, timestamp_usec %d\n", ntohl(buffer->seq), ntohl(buffer->sender_id), ntohl(buffer->receiver_id), ntohl(buffer->timestamp_sec), ntohl(buffer->timestamp_usec));
+            packet_success = sendto(sockfd, buffer, sizeof(struct msg_payload), 0, receiver_info->ai_addr, receiver_info->ai_addrlen);
+            printf("Sender: Total packets sent so far: %d\n", seq);
+            poisson_delay((double)r);
+            gettimeofday(&curr_time, NULL);
+            //delta_time is elapsed time in microseconds
+            //   (divide by ONE_MILLION to get seconds)
+            delta_time = (curr_time.tv_sec * ONE_MILLION + curr_time.tv_usec) - (start_time.tv_sec * ONE_MILLION + start_time.tv_usec);
+            
+            //Get the timestamp for the next packet
+            curr_timestamp_sec = curr_time.tv_sec;
+            curr_timestamp_usec = curr_time.tv_usec;
+            buffer->timestamp_sec = htonl((long)curr_timestamp_sec);
+            buffer->timestamp_usec = htonl((long)curr_timestamp_usec);
+            buffer->seq = htonl(seq++);
+            //printf("Sender: Delta time: %d usec, current time of seconds: %d sec, current time of microsec: %d microsec\n", (int)delta_time, (int)curr_timestamp_sec, (int)curr_timestamp_usec);
+            counter = 0;
+        }
     }
     close(sockfd);
     return 0; 
