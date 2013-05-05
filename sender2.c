@@ -88,6 +88,7 @@ int main(int argc, char *argv[]) {
     struct timeval curr_time;
     struct timeval last_tx_time;
     time_t delta_time = 0, curr_timestamp_sec = 0, curr_timestamp_usec = 0;
+    unsigned int total_pkts_sent = 0;
     //Variables used for incoming packets
     int recv_success;
     struct msg_payload *buff;
@@ -98,6 +99,7 @@ int main(int argc, char *argv[]) {
     //Variables used for estimation of packet timeout value
     unsigned int ack_pkt_cnt = 0;
     double avg_rtt = 0, current_rtt = 0, avg_dev = 0; //units are in ms
+    int has_acks = 0;
     
     //Parsing input arguments
     if (argc != 8) {
@@ -118,6 +120,7 @@ int main(int argc, char *argv[]) {
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_flags = AI_PASSIVE; // use my IP
     
     /*
      * for DEBUGGING purposes: change ROUTER_PORT TO get_receiver_port(1 or 2)
@@ -145,14 +148,15 @@ int main(int argc, char *argv[]) {
         perror("Sender 2: unable to create listening socket\n");
         return 5;
     }
-    //set listening socket to be nonblocking
-    fcntl(listen_sockfd, F_SETFL, O_NONBLOCK);
+    
     
     if ((bind(listen_sockfd, sender_info->ai_addr, sender_info->ai_addrlen)) == -1) {
         close(listen_sockfd);
         perror("Sender 2: unable to bind listening socket to port\n");
         return 6;
     }
+    //set listening socket to be nonblocking
+    fcntl(listen_sockfd, F_SETFL, O_NONBLOCK);
     printf("Sender 2: waiting to receive ACKS from D2...\n");
     
     //Establishing the packet: filling basic packet information
@@ -169,6 +173,8 @@ int main(int argc, char *argv[]) {
     //allocate memory to buffer incoming ACK packets
     buff = malloc(sizeof (struct msg_payload));
     memset(buff, 0, sizeof (struct msg_payload));
+    //init timeout_time = r
+    timeout_time = (double)r;
     
     while (1) {
         //Send packets within the window size
@@ -185,7 +191,8 @@ int main(int argc, char *argv[]) {
             //printf("Sender 2 current window size: %d\n", slide_window_size);
             //Send packet
             packet_success = sendto(sockfd, buffer, sizeof(struct msg_payload), 0, receiver_info->ai_addr, receiver_info->ai_addrlen);
-            //printf("Sender 2: Total packets sent so far: %d\n",next_seq_no+1);
+            total_pkts_sent++;
+            printf("Sender 2: Total packets sent so far: %d\n",total_pkts_sent);
             poisson_delay((double)r);
             //Update the packet sequence ID
             next_seq_no++;
@@ -199,19 +206,20 @@ int main(int argc, char *argv[]) {
                 continue;
             }
         }
-        
+
+        has_acks = 0;
         //Receive and process ACK packets from listening socket
         while (recv_success = recvfrom(listen_sockfd, buff, sizeof (struct msg_payload), 0, (struct sockaddr *)&their_addr, &addr_len)) {
                 if (recv_success > 0) {//received ACK packet
                     ack_pkt_cnt++; //increment ACK packet counter
-                    
+                    has_acks = 1;
                     buff->seq = ntohl(buff->seq);
                     buff->sender_id = ntohl(buff->sender_id);
                     buff->receiver_id = ntohl(buff->receiver_id);
                     buff->timestamp_sec = ntohl(buff->timestamp_sec);
                     buff->timestamp_usec = ntohl(buff->timestamp_usec);
                     // printf("ACK Pkt count: %d seq %d\n", ack_pkt_cnt, buff->seq);
-                    //printf("RECEIVED Pkt data: seq#-%d, senderID-%d, receiverID-%d, timestamp_sec-%d, timestamp_usec:%d\n", buff->seq, buff->sender_id, buff->receiver_id, (int)buff->timestamp_sec, (int)buff->timestamp_usec);
+                    printf("RECEIVED Pkt data: seq#-%d, senderID-%d, receiverID-%d, timestamp_sec-%d, timestamp_usec:%d\n", buff->seq, buff->sender_id, buff->receiver_id, (int)buff->timestamp_sec, (int)buff->timestamp_usec);
                 
                 } else {
                     //break out from the receiving ACK while loop
@@ -232,50 +240,53 @@ int main(int argc, char *argv[]) {
                     //printf("Initial avg RTT %f, initial avg deviation %f, current RTT %f\n", avg_rtt, avg_dev, current_rtt);
                     avg_rtt = avg_round_trip_time(avg_rtt, current_rtt, 0.875);
                     avg_dev = avg_deviation(avg_dev, current_rtt, avg_rtt, 0.75);
-                    //printf("Calculated avg RTT %f, calculated avg deviation %f\n", avg_rtt, avg_dev);
+                    printf("Calculated avg RTT %f, calculated avg deviation %f\n", avg_rtt, avg_dev);
                 }
                 //New timeout_time
                 timeout_time = timeout(avg_rtt, avg_dev);
                 gettimeofday(&start_time, NULL);
-                //printf("The time out time is %f avg_rtt %f avg_dev %f \n", timeout_time, avg_rtt, avg_dev);
+                printf("The time out time is %f avg_rtt %f avg_dev %f \n", timeout_time, avg_rtt, avg_dev);
                 /*Shift the window if Sender 2 receives an ACK for a
                  packet sequence ID outside of the current window, or if
                  the packet sequence ID is smaller than the current
                  sequence number (next_seq_no) and S2 has timed out*/
-            }
-        //Decide whether to expand or shrink window based on the last ACK sequence number
-        if (buff->seq == next_seq_no) {
-            beg_seq_no++;
-            //AIMD to change the window size based on ACKS recvd
-            if (aimd_option == 1) {
-                //double sliding window size if there is no pkt loss
-                slide_window_size++;
-                if (slide_window_size > MAX_WINDOW_SIZE) {
-                    slide_window_size = MAX_WINDOW_SIZE;
+        }
+        
+        if (has_acks) {
+            //Decide whether to expand or shrink window based on the last ACK sequence number
+            if (buff->seq == next_seq_no) {
+                beg_seq_no++;
+                //AIMD to change the window size based on ACKS recvd
+                if (aimd_option == 1) {
+                    //double sliding window size if there is no pkt loss
+                    slide_window_size++;
+                    if (slide_window_size > MAX_WINDOW_SIZE) {
+                        slide_window_size = MAX_WINDOW_SIZE;
+                    }
+                    printf("Window size updated to %d\n", slide_window_size);
                 }
-                printf("Window size updated to %d\n", slide_window_size);
-            }
-        } else {
-            //receiver is still ACKING an older pkt
-            //Reduce window size by half
-            if (aimd_option == 1) {
-                slide_window_size /= 2;
-                if (slide_window_size < MIN_WINDOW_SIZE) {
-                    slide_window_size = MIN_WINDOW_SIZE;
+            } else {
+                //receiver is still ACKING an older pkt
+                //Reduce window size by half
+                if (aimd_option == 1) {
+                    slide_window_size /= 2;
+                    if (slide_window_size < MIN_WINDOW_SIZE) {
+                        slide_window_size = MIN_WINDOW_SIZE;
+                    }
+                    printf("Window size updated to %d\n",   slide_window_size);
                 }
-                printf("Window size updated to %d\n",   slide_window_size);
-            }
-            //delta_time is elapsed time in milliseconds
-            gettimeofday(&curr_time, NULL);
-            delta_time = ((curr_time.tv_sec * ONE_MILLION + curr_time.tv_usec) - (start_time.tv_sec * ONE_MILLION+ start_time.tv_usec))/1000;
-            // printf("Elapsed (Delta) time for Sender 2: %f ms\n", (float)delta_time);
-            if ((buff->seq < next_seq_no) && (delta_time >= timeout_time)|| (buff->seq >= (beg_seq_no + slide_window_size))) {
-                printf("*****TIMEOUT time: %f, DELTA time: %f\n", timeout_time, (float)delta_time);
-                beg_seq_no = buff->seq;
-                next_seq_no = buff->seq;
-                //reset the timer
+                //delta_time is elapsed time in milliseconds
                 gettimeofday(&curr_time, NULL);
-                gettimeofday(&start_time, NULL);
+                delta_time = ((curr_time.tv_sec * ONE_MILLION + curr_time.tv_usec) - (start_time.tv_sec * ONE_MILLION+ start_time.tv_usec))/1000;
+                // printf("Elapsed (Delta) time for Sender 2: %f ms\n", (float)delta_time);
+                if ((buff->seq < next_seq_no) && (delta_time >= timeout_time)|| (buff->seq >= (beg_seq_no + slide_window_size))) {
+                    printf("*****TIMEOUT time: %f, DELTA time: %f\n", timeout_time, (float)delta_time);
+                    beg_seq_no = buff->seq;
+                    next_seq_no = buff->seq;
+                    //reset the timer
+                    gettimeofday(&curr_time, NULL);
+                    gettimeofday(&start_time, NULL);
+                }
             }
         }
     }

@@ -173,6 +173,9 @@ int main(int argc, char *argv[]) {
             buff->timestamp_sec = htonl(buff->timestamp_sec);
             buff->timestamp_usec = htonl(buff->timestamp_usec);
             sent_pkt_success = sendto(ack_sockfd, buff, sizeof (struct msg_payload), 0, sender_info->ai_addr, sender_info->ai_addrlen);
+            if (sent_pkt_success <= 0) {
+                printf("cannot send pkt\n");
+            }
         }
     }
     close(sockfd);
