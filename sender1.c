@@ -116,7 +116,7 @@ int main(int argc, char *argv[]) {
             //printf("%s: payload size is %f Bytes\n", __func__, (double)sizeof(payload));
             printf("Pkt data: seq#-%d, senderID-%d, receiverID-%d, timestamp_sec-%d, timestamp_usec %d\n", ntohl(buffer->seq), ntohl(buffer->sender_id), ntohl(buffer->receiver_id), ntohl(buffer->timestamp_sec), ntohl(buffer->timestamp_usec));
             packet_success = sendto(sockfd, buffer, sizeof(struct msg_payload), 0, receiver_info->ai_addr, receiver_info->ai_addrlen);
-            printf("Sender: Total packets sent so far: %d\n", seq);
+            printf("Sender 1: time: %d Total packets sent so far: %d\n", (int)curr_time.tv_sec, seq);
             poisson_delay((double)r);
             gettimeofday(&curr_time, NULL);
             //delta_time is elapsed time in microseconds
